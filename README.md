@@ -16,7 +16,7 @@ Swiss Centre of Expertise in Life Course Research (LIVES), University of Lausann
 This repository is licensed under a Creative Commons Attribution 4.0 International License (CC BY 4.0). You are free to share and adapt the materials, including for commercial use, provided appropriate credit is given.
 
 **To cite this repository:**  
-Guarnerio, M. (2025). *Intersecting Inequalities. The Role of Gender and Migration Background in Women’s Labour Market Vulnerability During Crises* [Supplementary materials]. GitHub. https://github.com/MattiaGuarnerio/Intersecting-Inequalities
+Guarnerio, M. (2025). *Intersecting Inequalities – Supplementary Materials* [Source code]. GitHub. https://github.com/MattiaGuarnerio/Intersecting-Inequalities
 
 ---
 
