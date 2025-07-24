@@ -7,7 +7,7 @@ These materials are intended to support transparency, reproducibility, and open 
 
 **Editor:**  
 Mattia Guarnerio  
-Swiss Centre of Expertise in Life Course Research (LIVES), University of Lausanne
+Swiss Centre of Expertise in Life Course Research (LIVES), University of Lausanne (UNIL)
 
 **Version Date:**  
 24 July 2025
