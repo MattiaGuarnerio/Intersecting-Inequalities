@@ -1,0 +1,30 @@
+Creative Commons Attribution 4.0 International Public License
+
+By exercising the Licensed Rights (defined below), You accept and agree to be bound by the terms and conditions of this Creative Commons Attribution 4.0 International Public License ("Public License").
+
+1. Licensed Rights. 
+Subject to the terms and conditions of this Public License, the Licensor hereby grants You a worldwide, royalty-free, non-sublicensable, non-exclusive, irrevocable license to exercise the Licensed Rights in the Licensed Material.
+
+These rights include:
+- Reproduce and Share the Licensed Material, in whole or in part, for any purpose, even commercially.
+- Produce and reproduce Derivative Works, with proper attribution.
+
+2. Attribution.
+You must give appropriate credit, provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the Licensor endorses you or your use.
+
+3. No additional restrictions.
+You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
+
+4. Notices:
+You do not have to comply with the license for elements of the material in the public domain or where your use is permitted by an applicable exception or limitation.
+
+---
+
+This work is licensed under the Creative Commons Attribution 4.0 International License.
+
+To view a copy of this license, visit:
+https://creativecommons.org/licenses/by/4.0/
+
+Licensor: Mattia Guarnerio  
+Year: 2025  
+Repository: https://github.com/MattiaGuarnerio/Intersecting-Inequalities
