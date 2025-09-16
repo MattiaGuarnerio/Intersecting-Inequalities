@@ -1,6 +1,6 @@
 # Intersecting Inequalities – Supplementary Materials
 
-**Description:** This repository contains supplementary materials for the book chapter *"Intersecting Inequalities. The Role of Gender and Migration Background in Women’s Labour Market Vulnerability During Crises"* authored by Stephanie Steinmetz and Mattia Guarnerio, and published in *Women in Turbulent Times*. The repository includes Stata and R scripts used for data preparation, analysis, and the generation of tables and figures. It also contains a reproducible technical report, rendered via Quarto, documenting the analytical workflow and methodological details.
+**Description:** This repository contains supplementary materials for the book chapter *"Intersecting Inequalities. The Role of Gender and Migration Background in Women’s Labour Market Vulnerability During Crises"* authored by Stephanie Steinmetz and Mattia Guarnerio, and published in *Women in Turbulent Times*. The repository includes a Stata `.do` file and an R `.qmd` script used for data preparation, analysis, and the generation of tables and figures. It also contains a technical `.pdf` report, rendered via Quarto, documenting the analytical workflow and methodological details, fully reproducible upon request.
 
 These materials are intended to support transparency, reproducibility, and open science in quantitative sociological research.
 
@@ -14,4 +14,5 @@ These materials are intended to support transparency, reproducibility, and open 
 
 ---
 
-**Note:** The book chapter to which these materials relate is published in the edited volume *Women in Turbulent Times*. Please consult the publisher's terms for citation and distribution of the main text.
+**Notes:** The book chapter to which these materials relate is published in the edited volume *Women in Turbulent Times*. Please consult the publisher's terms for citation and distribution of the main text.
+The `.qmd` script must be rendered in the same folder as the `.bib` and `.csl` files provided in this repository.
