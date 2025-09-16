@@ -1,0 +1,2808 @@
+---
+title: "Intersecting Inequalities"
+subtitle: "Supplementary Materials"
+author:
+  - Stephanie Steinmetz (UNIL)
+  - Mattia Guarnerio (UNIL)
+format:
+  pdf:
+    include-in-header: 
+      text: |
+        \usepackage{fvextra}
+        \usepackage{float}
+        \usepackage{caption}
+        \captionsetup[figure]{labelformat=empty,justification=centering}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+        \graphicspath{{C:/Users/mguarner/Desktop/UNIL/Bonus Tracks/Intersecting Inequalities/}}
+toc: true
+toc-location: body
+fig-cap-location: bottom
+fig-numbering: false
+number_sections: true
+embed_resources: true
+bibliography: intersecting.bib
+csl: apa.csl
+editor: source
+date: 16/09/2025
+date-format: full
+eval: true
+echo: true
+warning: false
+---
+
+```{r Setup, include = FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/mguarner/Desktop/UNIL/Bonus Tracks/Intersecting Inequalities")
+```
+
+## 1. Introduction
+
+Our book chapter explores how major crises, specifically the **Great Recession** and the **COVID-19 pandemic**, have shaped occupational outcomes in the European Union through an *intersectional* lens, focusing on the compounded disadvantages associated with **gender** and **migrant background**. Emphasising the growing importance of migrant women in the European labour force, it calls for a critical rethinking of conventional explanations of gendered labour market impacts during times of crisis, namely the *buffer*, *substitution*, and *segmentation* hypotheses, to account for the multiple vulnerabilities faced by an increasing heterogeneous workforce.
+
+Drawing on pooled cross-sectional data from the *European Union Statistics on Income and Living Conditions* (EU-SILC) survey for the years 2007 to 2022 across 20 EU countries [@eurostat_eu_2024], the chapter examines gender- and migration-based inequalities in **employment status**, **job quality**, and **occupational segregation**.
+
+Findings reveal that native workers remained relatively insulated from both crises. Notably, native women no longer fulfil their historical role as a flexible labour reserve. Instead, non-EU migrant workers, especially women, have assumed this buffering role, disproportionately absorbing employment shocks during economic downturns. These insights underscore the need to systematically integrate an intersectional perspective into labour market research and policymaking in order to fully capture how crises differentially affect Europe’s increasingly diversifying workforce.
+
+This document illustrates the practical execution of all data tidying steps, taken on an already modified sample of EU-SILC, in order to ensure privacy and anonimity. Furthermore, it details the generation and formatting of all tables and figures contained in the book chapter, both in the main text and the online appendix. The main aim is to guarantee full transparency and replicability of our results and findings.
+
+To get started, the necessary R [@r_core_team_r_2021] `version 4.3.3` packages must be loaded from the library into the environment. Notable required extensions are:
+
+1.  `future` `version 1.40.0` [@bengtsson_future_2015], for speeding up the calculation of the **Mutual Information Index of Occupational Segregation** (**M**) through *parallel processing* [see @guinea-martin_joint_2015].
+
+2.  `ggtext` `version 0.1.2` [@wilke_ggtext_2020], for rendering text boxes with complex formatting.
+
+3.  `gridExtra` `version 2.3` [@auguie_gridextra_2010], for arranging multiple grid-based plots in a single figure.
+
+4.  `gt` `version 1.0.0` [@iannone_gt_2025], for creating beautifully formatted, LaTeX-ready display tables.
+
+5.  `gtExtras` `version 0.5.0` [@mock_gtextras_2022], for supporting more complex formatting with `gt`.
+
+6.  `haven` `version 2.5.4` [@wickham_haven_2015], for importing and exporting Stata (`.dta`) files.
+
+7.  `mutualinf` `version 2.0.3` [@angulo-gonzalez_mutualinf_2021], for computing **M**.
+
+8.  `srvyr` `version 1.3.0` [@freedman_ellis_srvyr_2016], for applying cross-sectional personal weights.
+
+9.  `tidyverse` `version 2.0.0` [@wickham_welcome_2019], for data tidying, wrangling, and visualisation, including `ggplot2` `version 3.5.2` [@wickham_ggplot2_2016].
+
+
+```{r Libraries, include = FALSE}
+library(future)
+library(ggtext)
+library(gridExtra)
+library(gt)
+library(gtExtras)
+library(haven)
+library(mutualinf)
+library(srvyr)
+library(tidyverse)
+```
+
+## 2. Data Tidying
+
+EU-SILC microdata must be tidied and prepared for tabulation and visualisation, applying sample restrictions and recoding variable labels. The original EU-SILC sources cannot be published in an open source format, due to data privacy requirements related to the scientific use files provided by Eurostat. 
+
+Accordingly, we execute the following steps on the main sample:
+
+1.  Importing the EU-SILC dataset and removing all superfluous variables.
+
+2.  Recoding the *country* variable to standardise all codes.
+
+3.  Transforming *sexmig*, *year*, *country*, *isco*, *PL050*, *PL051*, *occrit*, and *emp* into factor variables.
+
+4.  Filtering out all self-employed individuals from the main analytic sample, based on *PL040*.
+
+5.  Creating an analytic subsample containing only employed respondents, based on *emp*, and removing *temp* and *PL060* from the main sample.
+
+6.  Filtering out all individuals who work more than 70 hours per week from the employed subsample, based on *PL060*.
+
+7.  Apply casewise deletion to all analytic samples.
+
+### 2.1 ✧ Importing EU-SILC data
+
+EU-SILC data is imported using the `read_dta` function from `haven`.
+
+```{r Importing EU-SILC data}
+# Importing the "EUSILC_20072022_WF_FIN.dta" Stata file and selecting only the variables that are required for our analysis.
+
+d <- read_dta("Data/EUSILC_20072022_WF_FIN.dta") |>
+  select(year, country, sexmig,
+         RB050, PL040, emp,
+         isco, PL050, PL051,
+         occrit, PL060, temp)
+
+# N = 2.442.653 is the original sample size.
+```
+
+### 2.2 ✧ Recoding EU-SILC data
+
+In EU-SILC, the *country* variable uses the `EL` and `GR` codes for **Greece**. To ensure consistency and comparability across samples, all values are standardised to `EL`. Moreover, *sexmig*, *year*, *country*, *isco*, *PL050*, *PL051*, *occrit*, and *emp* are transformed into factor variables with easily readable labels.
+
+```{r Recoding EU-SILC data}
+# Setting all codes for Greece are all set to "EL", using case_when() in a mutate() call.
+d <- d |> mutate(
+  country = case_when(
+    country %in% c("GR") ~ "EL",
+    TRUE ~ country
+  )
+) |>
+  # Transforming all variables into factors, using as.factor() in a mutate() call.
+  mutate(
+    sexmig = as.factor(sexmig),
+    year = as.factor(year),
+    country = as.factor(country),
+    occrit = as.factor(occrit),
+    emp = as.factor(emp),
+    temp = as.factor(temp)
+    ) |>
+  # Assigning easily readable labels to all variables, using factor() and fct_recode() in a mutate() call.
+   mutate(
+     sexmig = fct_recode(sexmig,
+                         "NonEUMigWo" = "1",
+                         "EUMigWo" = "2",
+                         "NatWo" = "3",
+                         "NonEUMigMe" = "4",
+                         "EUMigMe" = "5",
+                         "NatMe" = "6"
+                         ),
+    
+    isco_fct = factor(isco,
+                  levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9"),
+                  labels = c("Managers", "Professionals", "Technicians",
+                             "Clerical workers", "Service workers",
+                             "Skilled workers",
+                             "Craft and related trades workers",
+                             "Operators", "Elementary workers")),
+    
+    PL050_fct = factor(PL050,
+                   levels = c("11", "12", "13", "21", "22", "23", "24",
+                              "31", "32", "33", "34", "41", "42", "51", "52",
+                              "61", "71", "72", "73", "74", "81", "82", "83",
+                              "91", "92", "93"),
+                   labels = c("Legislators, senior officials and managers",
+                              "Corporate Managers",
+                              "Managers of small enterprises",
+                              "Physical, mathematical and engineering professionals",
+                              "Life science and health professionals",
+                              "Teaching professionals",
+                              "Other professionals",
+                              "Physical and engineering science associate professionals",
+                              "Life science and health associate professionals",
+                              "Teaching associate professionals",
+                              "Other associate professionals",
+                              "Office clerks", "Customer services clerks",
+                              "Personal and protective services workers",
+                              "Models, salespersons and demonstrators",
+                              "Skilled agricultural and fishery workers",
+                              "Extraction and building trades workers",
+                              "Metal, machinery and related trades workers",
+                              "Precision, handicraft, craft printing and related trades workers",
+                              "Other craft and related trades workers",
+                              "Stationary-plant and related operators",
+                              "Machine operators and assemblers",
+                              "Drivers and mobile plant operators",
+                              "Sales and services elementary occupations",
+                              "Agricultural, fishery and related labourers",
+                              "Labourers in mining, construction, manufacturing and transport")),
+    
+    PL051_fct = factor(PL051,
+                   levels = c("11", "12", "13", "14",
+                              "21", "22", "23", "24", "25", "26",
+                              "31", "32", "33", "34", "35",
+                              "41", "42", "43", "44",
+                              "51", "52", "53", "54",
+                              "61", "62", "63",
+                              "71", "72", "73", "74", "75",
+                              "81", "82", "83",
+                              "91", "92", "93", "94", "95", "96"),
+                   
+                   labels = c("Chief executives, senior officials and legislators",
+                              "Administrative and commercial managers",
+                              "Production and specialised services managers",
+                              "Hospitality, retail and other services managers",
+                              "Science and engineering professionals",
+                              "Health professionals",
+                              "Teaching professionals",
+                              "Business and administration professionals",
+                              "Information and communications technology professionals",
+                              "Legal, social and cultural professionals",
+                              "Science and engineering associate professionals",
+                              "Health associate professionals",
+                              "Business and administration associate professionals",
+                              "Legal, social, cultural and related associate professionals",
+                              "Information and communications technicians",
+                              "General and keyboard clerks",
+                              "Customer services clerks",
+                              "Numerical and material recording clerks",
+                              "Other clerical support workers",
+                              "Personal service workers",
+                              "Sales workers",
+                              "Personal care workers",
+                              "Protective services workers",
+                              "Market-oriented skilled agricultural workers",
+                              "Market-oriented skilled forestry, fishery and hunting workers",
+                              "Subsistence farmers, fishers, hunters and gatherers",
+                              "Building and related trades workers, excluding electricians",
+                              "Metal, machinery and related trades workers",
+                              "Handicraft and printing workers",
+                              "Electrical and electronic trades workers",
+                              "Food processing, wood working, garment and other craft and related trades workers",
+                              "Stationary plant and machine operators",
+                              "Assemblers",
+                              "Drivers and mobile plant operators",
+                              "Cleaners and helpers",
+                              "Agricultural, forestry and fishery labourers",
+                              "Labourers in mining, construction, manufacturing and transport",
+                              "Food preparation assistants",
+                              "Street and related sales and service workers",
+                              "Refuse workers and other elementary workers")),
+  
+  occrit = fct_recode(occrit,
+                        "Non-essential occupation" = "0",
+                        "Essential occupation" = "1"
+  ),
+  
+  emp = fct_recode(emp,
+                    "Employed" = "1",
+                    "Unemployed" = "2",
+                    "Inactive" = "3"
+  ),
+  
+  temp = fct_recode(temp,
+                    "Permanent job" = "1",
+                    "Temporary job" = "2"
+  )
+)
+```
+
+### 2.3 ✧ Generating the analytic samples
+
+We utilise two analytic samples of individuals aged 16–64, excluding the self-employed, retirees, students, and military personnel. These comprise, respectively, the full labour force and only those in paid employment. First, we filter out all self-employed respondents (*PL040*) from `d`.
+
+```{r Filtering out the self-employed}
+# Filtering out all self-employed respondents (≠3), using the filter() `tidyverse` function.
+d <- d |> filter(PL040 %in% c(3, NA)) |> select(-PL040)
+
+# N = 2.140.998 is the provisional sample size of `d`.
+# 2.442.653 - 2.140.998 = 301.655 are self-employed or family-working individuals.
+# 301.655 / 2.442.653 = 12.35% of total cases are removed.
+```
+
+Second, we retain only employed individuals (*emp*) in a separate analytic subsample, referred to as `d_emp`. The variables *temp* and *PL060* are preserved exclusively within this subsample.
+
+```{r Creating an employed subsample}
+# Creating a separate subsample containing only employed respondents, using the filter() `tidyverse` function.
+
+d_emp <- d |> filter(emp %in% c("Employed"))
+
+# N = 1.563.301 is the provisional sample size of `d_emp`.
+# 2.140.998 - 1.563.301 = 577.697 individuals are unemployed, inactive, or missing employment status.
+# 577.697 / 2.140.998 = 26.98% of total cases are removed.
+
+# Dropping temp and PL060 from the main sample, using the select() `tidyverse` function.
+d <- d |> select(-PL060, -temp)
+```
+
+Third, we exclude all individuals reporting more than 70 working hours per week (*PL060*) from the `d_emp` subsample and apply casewise deletion to both `d` and `d_emp`.
+
+```{r Applying casewise deletion}
+# Applying casewise deletion with the filter() `tidyverse` function, using is.na() to identify missing values.
+
+# Notes:
+# PL050 is available only in 2007–2010, PL051 only in 2011–2022.
+# Filtering conditions must account for this distinction.
+# drop_na() removes remaining missing values, excluding PL050/PL051 and their recoded versions.
+# relocate() is used to reorder factor variables next to their originals for added clarity.
+
+# Main analytic sample (`d`).
+d <- d |> filter(
+  !(year %in% c("2007", "2008", "2009", "2010") & is.na(PL050)),
+  !(year %in% c("2011", "2012", "2015", "2018", "2019", "2020",
+                "2021", "2022") & is.na(PL051))) |>
+  drop_na(all_of(setdiff(names(d), c("PL050", "PL051", "PL050_fct", "PL051_fct")))) |>
+  relocate(isco_fct, .after = isco) |>
+  relocate(PL050_fct, .after = PL050) |>
+  relocate(PL051_fct, .after = PL051)
+
+# N = 1.838.684 is the final sample size of `d`.
+# (2.140.998 - 1.838.684) / 2.140.998 = 14.12% of incomplete cases are removed.
+
+# Employed subsample (`d_emp`).
+# Adding a filter() condition based on PL060, to exclude outliers for hours worked per week.
+d_emp <- d_emp |> filter(
+  !(year %in% c("2007", "2008", "2009", "2010") & is.na(PL050)),
+  !(year %in% c("2011", "2012", "2015", "2018", "2019", "2020",
+                "2021", "2022") & is.na(PL051))) |>
+  drop_na(all_of(setdiff(names(d_emp), c("PL050", "PL051", "PL050_fct", "PL051_fct")))) |>
+  filter(PL060 <= 70) |>
+  relocate(isco_fct, .after = isco) |>
+  relocate(PL050_fct, .after = PL050) |>
+  relocate(PL051_fct, .after = PL051)
+
+# N = 1.296.594 is the final sample size of `d_emp`.
+# (1.563.301 - 1.296.594) / 1.563.301 = 17.06% of incomplete cases or outliers are removed.
+```
+
+Finally, the tidied samples `d` and `d_emp` are saved using the `write_dta` function from the `haven` package.
+
+```{r Saving the tidied samples}
+# Saving the tidied samples as Stata data files (.dta).
+write_dta(d, "Data/d.dta")
+write_dta(d_emp, "Data/d_emp.dta")
+```
+
+```{r Cleaning up (0), include = FALSE}
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+## 3. Data Visualisation
+
+Now, we turn to data visualisation. Our book chapter includes four main figures:
+
+2.1.  *Yearly Trends in Rates of Employment, Unemployment, and Inactivity by Sex and Migrant Background.*
+
+2.2.  *Yearly Trends in Average Weekly Working Hours by Sex and Migrant Background.*
+
+2.3.  *Yearly Trends in Temporary Employment Rates by Sex and Migrant Background.*
+
+2.4.  *Yearly Trends in Employment in Essential Occupations by Sex and Migrant Background.*
+
+It is important to note that **Figure 2.1** is submitted as three separate panels, that is, **2.1a** (*Employment*), **2.1b** (*Unemployment*), and **2.1c** (*Inactivity*) on account of editorial constraints.
+
+Our book chapter also contains two main tables:
+
+2.1. *Changes in Occupational Concentration (1-digit ISCO) during the Great Recession, by Sex and Migrant Background.*
+
+2.2. *Changes in Occupational Concentration (1-digit ISCO) during the COVID-19 Pandemic, by Sex and Migrant Background.*
+
+The **Online Appendix** is comprised by ten supplementary tables:
+
+A2.1. *Changes in Rates of Employment, Unemployment, and Inactivity, by Sex and Migrant Background.*
+
+A2.2. *Yearly Trends in Rates of Employment, Unemployment, and Inactivity, by Sex and Migrant Background.*
+
+A2.3. *Changes in Weekly Working Hours and Rates of Temporary Employment, by Sex and Migrant Background.*
+
+A2.4. *Yearly Trends in Average Weekly Working Hours by Sex and Migrant Background.*
+
+A2.5. *Yearly Trends in Rates of Temporary and Permanent Employment, by Sex and Migrant Background.*
+
+A2.6. *Yearly Trends in Mutual Information Index of Occupational Segregation, by Sex and Migrant Background.*
+
+A2.7a. *Yearly Trends in Occupational Concentration (1-digit ISCO) among Women, by Migrant Background.*
+
+A2.7b. *Yearly Trends in Occupational Concentration (1-digit ISCO) among Men, by Migrant Background.*
+
+A2.8. *Yearly Trends in Rates of Employment in Essential Occupations, by Sex and Migrant Background.*
+
+A2.9. *Changes in Rates of Employment in Essential Occupations, by Sex and Migrant Background.*
+
+### 3.1 ✧ Table A2.1 / Table A2.2 / Figure 2.1a / Figure 2.1b / Figure 2.1c 
+
+**Table A2.1**, as well as **Figures 2.1a** (*Employed*), **2.1b** (*Unemployed*), and **2.1c** (*Inactive*), all derive from the raw format tibble that synthesises the information contained in **Table A2.2**.
+
+```{r Creating the raw tibble (1)}
+tablea22 <- d |>
+  # Only the relevant variables and the design weights are included in the raw format tibble.
+  select(year, sexmig, emp, RB050) |>
+  # Recoding all sex and migrant background categories to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    sexmig = fct_recode(sexmig,
+                        "Non-EU Migrant Women" = "NonEUMigWo",
+                        "EU Migrant Women" = "EUMigWo",
+                        "Native Women" = "NatWo",
+                        "Non-EU Migrant Men" = "NonEUMigMe",
+                        "EU Migrant Men" = "EUMigMe",
+                        "Native Men" = "NatMe")) |>
+  # Applying design weights with the as_survey() function from the `srvyr` package.
+  as_survey(weights = RB050) |>
+  # Grouping by year, sex and migrant background, and employment status.
+  group_by(year, sexmig, emp) |> 
+  # Counting the weighted number of respondents within each group.
+  summarise(weighted_n = survey_total()) |>
+  # Transforming the weighted counts into percentages and rounding at two decimal places.
+  mutate(perc = round(weighted_n / sum(weighted_n) * 100, 2)) |>
+  # Resetting the grouping.
+  ungroup() |> 
+  # Removing the weighted counts and their associated standard errors.
+  select(-weighted_n, -weighted_n_se)
+```
+
+**Table A2.2** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.2}
+# Table A2.2. Yearly Trends in Rates of Employment, Unemployment, and Inactivity, by Sex and Migrant Background.
+
+tablea22_gt <- tablea22 |>
+  # Recoding all percentages and years as strings in a mutate() call, so that `gt` does not mess with their visualisation.
+  mutate(perc = sprintf("%.2f%%", perc),
+         year = as.character(year)) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Building the `gt` table, setting row names as employment status categories, and grouping rows by sex and migrant background. 
+  gt(rowname_col = "emp", groupname_col = "sexmig") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.2. Yearly Trends in Rates of Employment, Unemployment, and Inactivity**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Setting column labels as strings, so that `gt` does not mess with their visualisation.
+  cols_label(
+    `2007` = "2007", `2008` = "2008", `2009` = "2009",
+    `2010` = "2010", `2011` = "2011", `2012` = "2012",
+    `2015` = "2015", `2018` = "2018", `2019` = "2019",
+    `2020` = "2020", `2021` = "2021", `2022` = "2022"
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different year.
+  tab_stubhead(label = "Year") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+      color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18),
+    column_labels.hidden = FALSE
+  ) |>
+  # Setting the source note to comply with editorial requirements. 
+  tab_source_note(
+    source_note = "Source: Own calculations, EU-SILC 2007-22 (N = 1.838.684); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea22_gt, "Visuals/Tables/TableA22.png")
+```
+
+```{r Printing Table A2.2, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA22.png")
+```
+
+**Figure 2.1a** is appropriately styled and saved as a `.svg` file using the `ggplot2` package.
+
+```{r Generating Figure 2.1a}
+# Figure 2.1a. Yearly Trends in Rates of Employment, by Sex and Migrant Background.
+
+figure21a <- tablea22 |>
+  # Recoding all years as numeric in a mutate() call, so that `ggplot2` can generate a line plot.
+  mutate(year = as.numeric(year)) |>
+  # Keeping employed respondents only, using the filter() `tidyverse` function.
+  filter(emp == "Employed") |>
+  # Generating a lineplot of rates of employment by year, sex, and migrant background.
+  ggplot(aes(x = year, y = perc, linetype = sexmig, color = sexmig)) +
+  # Setting an appropriate line width to facilitate the figure's interpretability.
+  geom_line(linewidth = 1) +
+  # Manually annotating rectangles of differing grey shades to highlight the Great Recession and the COVID-19 pandemic.
+  annotate("rect", xmin = 2, xmax = 3, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 3, xmax = 6, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  annotate("rect", xmin = 10, xmax = 11, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 11, xmax = 12, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  # Assigning appropriate labels to all rectangles to highlight the Great Recession and the COVID-19 pandemic.
+  geom_richtext(data = tibble(
+    year = c(2.5, 4.5, 10.5, 11.5),
+    perc = c(94, 94, 94, 94),
+    label = c("Great Recession<br>(short-term)", "Great Recession<br>(long-term)",
+              "COVID-19<br>(short-term)", "COVID-19<br>(long-term)"),
+    emp = "Employed"
+    ), 
+    aes(x = year, y = perc, label = label),
+    inherit.aes = FALSE, size = 3.5, color = "black", fontface = "bold") +
+  # Setting a continuous year-by-year scale on the x-axis.
+  scale_x_continuous(breaks = c(1:12),
+                     labels = c("2007", "2008", "2009", "2010", "2011", "2012",
+                                "2015", "2018", "2019", "2020", "2021", "2022")
+                     ) +
+  # Setting a continuous percentage scale on the y-axis.
+  scale_y_continuous(breaks = seq(0, 95, 1)) +
+  # Setting combinations of grey shades and line types to highlight sex and migrant background categories.
+  scale_linetype_manual(values = c("solid", "dotted", "twodash",
+                                   "solid", "dotted", "twodash")) +
+  scale_color_manual(values = c("#000000", "#000000", "#000000",
+                                "#999999", "#999999", "#999999")) +
+  # Styling axes and legends to make the figure look prettier.
+  guides(color = guide_legend(byrow = TRUE), linetype = guide_legend(byrow = TRUE)) +
+  labs(
+    title = "",
+    subtitle = "",
+    x = "",
+    y = "% of Respondents",
+    color = "",
+    linetype = ""
+  ) +
+  # Styling the overall theme to make the figure look prettier.
+  theme_bw(base_size = 14) +  
+  theme(
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18), 
+    plot.subtitle = element_text(hjust = 0.5, face = "italic", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  ) +
+  # Specifying a facet_grid() to wrap the figure inside an "Employed" panel.
+  facet_grid(rows = vars(emp), scales = "free")
+
+# Saving the `ggplot2` figure as a `.svg` file.
+ggsave(filename = "Visuals/Figures/Figure21a.svg",
+       plot = figure21a, width = 12, height = 10, dpi = 900)
+```
+
+```{r}
+#| label: Printing Figure 2.1a
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 12
+#| fig-height: 10
+#| fig-pos: "H"
+#| fig-cap: "**Figure 2.1a.** *Yearly Trends in Rates of Employment, by Sex and Migrant Background.*"
+
+# Including the now saved `ggplot2` figure as a graphic in the rendered `.pdf` report.
+figure21a
+```
+
+**Figure 2.1b** is appropriately styled and saved as a `.svg` file using the `ggplot2` package.
+
+```{r Generating Figure 2.1b}
+# Figure 2.1b. Yearly Trends in Rates of Unemployment, by Sex and Migrant Background.
+
+figure21b <- tablea22 |>
+  # Recoding all years as numeric in a mutate() call, so that `ggplot2` can generate a line plot.
+  mutate(year = as.numeric(year)) |>
+  # Keeping unemployed respondents only using the filter() `tidyverse` function.
+  filter(emp == "Unemployed") |>
+  # Generating a lineplot of rates of unemployment by year, sex, and migrant background.
+  ggplot(aes(x = year, y = perc, linetype = sexmig, color = sexmig)) +
+  # Setting an appropriate line width to facilitate the figure's interpretability.
+  geom_line(linewidth = 1) +
+  # Manually annotating rectangles of differing grey shades to highlight the Great Recession and the COVID-19 pandemic.
+  annotate("rect", xmin = 2, xmax = 3, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 3, xmax = 6, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  annotate("rect", xmin = 10, xmax = 11, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 11, xmax = 12, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  # Assigning appropriate labels to all rectangles to highlight the Great Recession and the COVID-19 pandemic.
+  geom_richtext(data = tibble(
+    year = c(2.5, 4.5, 10.5, 11.5),
+    perc = c(31, 31, 31, 31),
+    label = c("Great Recession<br>(short-term)", "Great Recession<br>(long-term)",
+              "COVID-19<br>(short-term)", "COVID-19<br>(long-term)"),
+    emp = "Unemployed"
+    ), 
+    aes(x = year, y = perc, label = label),
+    inherit.aes = FALSE, size = 3.5, color = "black", fontface = "bold") +
+  # Setting a continuous year-by-year scale on the x-axis.
+  scale_x_continuous(breaks = c(1:12),
+                     labels = c("2007", "2008", "2009", "2010", "2011", "2012",
+                                "2015", "2018", "2019", "2020", "2021", "2022")
+                     ) +
+  # Setting a continuous percentage scale on the y-axis.
+  scale_y_continuous(breaks = seq(0, 95, 1)) +
+  # Setting combinations of grey shades and line types to highlight sex and migrant background categories.
+  scale_linetype_manual(values = c("solid", "dotted", "twodash",
+                                   "solid", "dotted", "twodash")) +
+  scale_color_manual(values = c("#000000", "#000000", "#000000",
+                                "#999999", "#999999", "#999999")) +
+  # Styling axes and legends to make the figure look prettier.
+  guides(color = guide_legend(byrow = TRUE), linetype = guide_legend(byrow = TRUE)) +
+  labs(
+    title = "",
+    subtitle = "",
+    x = "",
+    y = "% of Respondents",
+    color = "",
+    linetype = ""
+  ) +
+  # Styling the overall theme to make the figure look prettier.
+  theme_bw(base_size = 14) +  
+  theme(
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18), 
+    plot.subtitle = element_text(hjust = 0.5, face = "italic", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  ) +
+   # Specifying a facet_grid() to wrap the figure inside an "Unemployed" panel.
+  facet_grid(rows = vars(emp), scales = "free")
+
+# Saving the `ggplot2` figure as a `.svg` file.
+ggsave(filename = "Visuals/Figures/Figure21b.svg",
+       plot = figure21b, width = 12, height = 10, dpi = 900)
+```
+
+```{r}
+#| label: Printing Figure 2.1b
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 12
+#| fig-height: 10
+#| fig-pos: "H"
+#| fig-cap: "**Figure 2.1b.** *Yearly Trends in Rates of Unemployment, by Sex and Migrant Background.*"
+
+# Including the now saved `ggplot2` figure as a graphic in the rendered `.pdf` report.
+figure21b
+```
+
+**Figure 2.1c** is appropriately styled and saved as a `.svg` file using the `ggplot2` package.
+
+```{r Generating Figure 2.1c}
+# Figure 2.1c. Yearly Trends in Rates of Inactivity, by Sex and Migrant Background.
+
+figure21c <- tablea22 |>
+  # Recoding all years as numeric in a mutate() call, so that `ggplot2` can generate a line plot.
+  mutate(year = as.numeric(year)) |>
+  # Keeping unemployed respondents only using the filter() `tidyverse` function.
+  filter(emp == "Inactive") |>
+  # Generating a lineplot of rates of inactivity by year, sex, and migrant background.
+  ggplot(aes(x = year, y = perc, linetype = sexmig, color = sexmig)) +
+  # Setting an appropriate line width to facilitate the figure's interpretability.
+  geom_line(linewidth = 1) +
+  # Manually annotating rectangles of differing grey shades to highlight the Great Recession and the COVID-19 pandemic.
+  annotate("rect", xmin = 2, xmax = 3, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 3, xmax = 6, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  annotate("rect", xmin = 10, xmax = 11, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 11, xmax = 12, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  # Assigning appropriate labels to all rectangles to highlight the Great Recession and the COVID-19 pandemic.
+  geom_richtext(data = tibble(
+    year = c(2.5, 4.5, 10.5, 11.5),
+    perc = c(24, 24, 24, 24),
+    label = c("Great Recession<br>(short-term)", "Great Recession<br>(long-term)",
+              "COVID-19<br>(short-term)", "COVID-19<br>(long-term)"),
+    emp = "Inactive"
+    ), 
+    aes(x = year, y = perc, label = label),
+    inherit.aes = FALSE, size = 3.5, color = "black", fontface = "bold") +
+  # Setting a continuous year-by-year scale on the x-axis.
+  scale_x_continuous(breaks = c(1:12),
+                     labels = c("2007", "2008", "2009", "2010", "2011", "2012",
+                                "2015", "2018", "2019", "2020", "2021", "2022")
+                     ) +
+  # Setting a continuous percentage scale on the y-axis.
+  scale_y_continuous(breaks = seq(0, 95, 1)) +
+  # Setting combinations of grey shades and line types to highlight sex and migrant background categories.
+  scale_linetype_manual(values = c("solid", "dotted", "twodash",
+                                   "solid", "dotted", "twodash")) +
+  scale_color_manual(values = c("#000000", "#000000", "#000000",
+                                "#999999", "#999999", "#999999")) +
+  # Styling axes and legends to make the figure look prettier.
+  guides(color = guide_legend(byrow = TRUE), linetype = guide_legend(byrow = TRUE)) +
+  labs(
+    title = "",
+    subtitle = "",
+    x = "",
+    y = "% of Respondents",
+    color = "",
+    linetype = ""
+  ) +
+  # Styling the overall theme to make the figure look prettier.
+  theme_bw(base_size = 14) +  
+  theme(
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18), 
+    plot.subtitle = element_text(hjust = 0.5, face = "italic", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  ) +
+  # Specifying a facet_grid() to wrap the figure inside an "Inactive" panel.
+  facet_grid(rows = vars(emp), scales = "free")
+
+# Saving the `ggplot2` figure as a `.svg` file.
+ggsave(filename = "Visuals/Figures/Figure21c.svg",
+       plot = figure21c, width = 12, height = 10, dpi = 900)
+```
+
+```{r}
+#| label: Printing Figure 2.1c
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 12
+#| fig-height: 10
+#| fig-pos: "H"
+#| fig-cap: "**Figure 2.1c.** *Yearly Trends in Rates of Inactivity, by Sex and Migrant Background.*"
+
+# Including the now saved `ggplot2` figure as a graphic in the rendered `.pdf` report.
+figure21c
+```
+
+**Table A2.1** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.1}
+# Table A2.1. Changes in Rates of Employment, Unemployment, and Inactivity, by Sex and Migrant Background.
+
+tablea21_gt <- tablea22 |>
+  # Isolating all years delimiting the Great Recession and the COVID-19 pandemic, using the filter() `tidyverse` function.
+  filter(year %in% c("2007", "2009", "2012", "2019", "2020", "2022")) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Calculating all the short-term and long-term percentage changes.
+  mutate(
+    change_07_09 = (`2009` - `2007`), # Great Recession (short-term).
+    change_07_12 = (`2012` - `2007`), # Great Recession (long-term).
+    change_19_20 = (`2020` - `2019`), # COVID-19 pandemic (short-term).
+    change_19_22 = (`2022` - `2019`) # COVID-19 pandemic (long-term).
+  ) |>
+  # Pivoting the table to a wider format, assigning a single column to all percentage changes.
+  pivot_longer(cols = c(change_07_09, change_07_12,
+                        change_19_20, change_19_22), 
+               names_to = "period", 
+               values_to = "change") |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(sexmig, emp, period, change) |>
+  # Recoding all variable labels to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    period = fct_recode(as.factor(period), 
+                        "Great Recession (2007-09, short-term)" =
+                          "change_07_09",
+                        "Great Recession (2007-12, long-term)" =
+                          "change_07_12",
+                        "COVID-19 (2019-20, short-term)" =
+                          "change_19_20",
+                        "COVID-19 (2019-22, long-term)" =
+                          "change_19_22")) |>
+  # Recoding all percentage changes as strings, so that `gt` does not mess with their visualisation.
+  mutate(change = if_else(change > 0, 
+                          sprintf("+%.2f%%", change), 
+                          sprintf("%.2f%%", change))) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentage changes to each employment status category.
+  pivot_wider(names_from = emp, values_from = change) |>
+  # Building the `gt` table, setting row names as time periods, and grouping rows by sex and migrant background. 
+  gt(rowname_col = "period", groupname_col = "sexmig") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.1. Changes in Employment, Unemployment, and Inactivity**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different employment status category.
+  tab_stubhead(label = "Employment Status") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18)
+  ) |>
+  # Setting the source note to comply with editorial requirements. 
+  tab_source_note(
+    source_note = "Note: Changes are calculated by subtracting the % in 2009/12/20/22 from the % in 2007/19.\nSource: Own calculations, EU-SILC 2007-22 (N = 1.838.684); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea21_gt, "Visuals/Tables/TableA21.png")
+```
+
+```{r Printing Table A2.1, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA21.png")
+```
+
+```{r Cleaning up (1), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(tablea21_gt, tablea22, tablea22_gt, figure21a, figure21b, figure21c)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+### 3.2 ✧ Table A2.4 / Figure 2.2
+
+**Figure 2.2** derives from the raw format tibble that synthesises the information contained in **Table A2.4**.
+
+```{r Creating the raw tibble (2)}
+tablea24 <- d_emp |>
+  # Recoding all sex and migrant background categories to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    sexmig = fct_recode(sexmig,
+                        "Non-EU Migrant Women" = "NonEUMigWo",
+                        "EU Migrant Women" = "EUMigWo",
+                        "Native Women" = "NatWo",
+                        "Non-EU Migrant Men" = "NonEUMigMe",
+                        "EU Migrant Men" = "EUMigMe",
+                        "Native Men" = "NatMe")) |>
+  # Applying design weights with the as_survey() function from the `srvyr` package.
+  as_survey(weights = RB050) |>
+  # Grouping by year and sex and migrant background.
+  group_by(year, sexmig) |>
+  # Computing the weighted means of weekly working hours within each group.
+  summarise(
+    PL060 = survey_mean(PL060),
+  ) |>
+  # Resetting the grouping.
+  ungroup() |> 
+  # Removing the weighted standard errors associated to the means.
+  select(-PL060_se)
+```
+
+**Table A2.4** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.4}
+# Table A2.4. Yearly Trends in Average Weekly Working Hours by Sex and Migrant Background.
+
+tablea24_gt <- tablea24 |>
+  # Recoding all average weekly working hours and years as strings in a mutate() call, so that `gt` does not mess with their visualisation.
+  mutate(PL060 = sprintf("%.2fh", PL060),
+         year = as.character(year)) |>
+  # Pivoting the table to a wider format, assigning a separate column of average weekly working hours to each year.
+  pivot_wider(names_from = year, values_from = PL060) |>
+  # Building the `gt` table, grouping rows by sex and migrant background.
+  # Row names are left empty, since only employed people are included in the `d_emp` analytic subsamples.
+  gt(rowname_col = "emp", groupname_col = "sexmig") |> 
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.4. Yearly Trends in Average Weekly Working Hours**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Setting column labels as strings, so that `gt` does not mess with their visualisation.
+  cols_label(
+    `2007` = "2007", `2008` = "2008", `2009` = "2009",
+    `2010` = "2010", `2011` = "2011", `2012` = "2012",
+    `2015` = "2015", `2018` = "2018", `2019` = "2019",
+    `2020` = "2020", `2021` = "2021", `2022` = "2022"
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+      color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18),
+    column_labels.hidden = FALSE
+  ) |>
+  # Setting the source note to comply with editorial requirements. 
+  tab_source_note(
+    source_note = "Note: Only employed respondents.\nSource: Own calculations, EU-SILC 2007-22 (N = 1.296.594); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea24_gt, "Visuals/Tables/TableA24.png")
+```
+
+```{r Printing Table A2.4, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA24.png")
+```
+
+**Figure 2.2** is appropriately styled and saved as a `.svg` file using the `ggplot2` package.
+
+```{r Generating Figure 2.2}
+# Figure 2.2. Yearly Trends in Average Weekly Working Hours by Sex and Migrant Background.
+
+figure22 <- tablea24 |>
+  # Recoding all years as numeric in a mutate() call, so that `ggplot2` can generate a line plot.
+  mutate(year = as.numeric(year)) |>
+  # Generating a lineplot of average weekly working hours by year, sex, and migrant background.
+  ggplot(aes(x = year, y = PL060, linetype = sexmig, color = sexmig)) +
+  # Setting an appropriate line width to facilitate the figure's interpretability.
+  geom_line(linewidth = 0.7) +
+  # Manually annotating rectangles of differing grey shades to highlight the Great Recession and the COVID-19 pandemic.
+  annotate("rect", xmin = 2, xmax = 3, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 3, xmax = 6, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  annotate("rect", xmin = 10, xmax = 11, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 11, xmax = 12, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  # Assigning appropriate labels to all rectangles to highlight the Great Recession and the COVID-19 pandemic.
+  geom_richtext(data = tibble(
+    year = c(2.5, 4.5, 10.5, 11.5),
+    perc = c(43.5, 43.5, 43.5, 43.5),
+    label = c("Great Recession<br>(short-term)", "Great Recession<br>(long-term)",
+              "COVID-19<br>(short-term)", "COVID-19<br>(long-term)")
+    ), 
+    aes(x = year, y = perc, label = label),
+    inherit.aes = FALSE, size = 3.5, color = "black", fontface = "bold") +
+  # Setting a continuous year-by-year scale on the x-axis.
+  scale_x_continuous(breaks = c(1:12),
+                     labels = c("2007", "2008", "2009", "2010", "2011", "2012",
+                                "2015", "2018", "2019", "2020", "2021", "2022")
+                     ) +
+  # Setting a continuous hour-based scale on the y-axis.
+  scale_y_continuous(breaks = seq(0, 70, 1), limits = c(32, 44)) +
+  # Setting combinations of grey shades and line types to highlight sex and migrant background categories.
+  scale_linetype_manual(values = c("solid", "dotted", "twodash",
+                                   "solid", "dotted", "twodash")) +
+  scale_color_manual(values = c("#000000", "#000000", "#000000",
+                                "#999999", "#999999", "#999999")) +
+  # Styling axes and legends to make the figure look prettier.
+  guides(color = guide_legend(byrow = TRUE), linetype = guide_legend(byrow = TRUE)) +
+  labs(
+    title = "",
+    subtitle = "",
+    x = "",
+    y = "Average Weekly Working Hours",
+    color = "",
+    linetype = ""
+  ) +
+  # Styling the overall theme to make the figure look prettier.
+  theme_bw(base_size = 14) +  
+  theme(
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18), 
+    plot.subtitle = element_text(hjust = 0.5, face = "italic", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  )
+
+# Saving the `ggplot2` figure as a `.svg` file.
+ggsave(filename = "Visuals/Figures/Figure22.svg",
+       plot = figure22, width = 12, height = 8, dpi = 600)
+```
+
+```{r}
+#| label: Printing Figure 2.2
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 12
+#| fig-height: 8
+#| fig-pos: "H"
+#| fig-cap: "**Figure 2.2.** *Yearly Trends in Average Weekly Working Hours by Sex and Migrant Background.*"
+
+# Including the now saved `ggplot2` figure as a graphic in the rendered `.pdf` report.
+figure22
+```
+
+```{r Cleaning up (2), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(tablea24_gt, figure22)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+### 3.3 ✧ Table A2.5 / Figure 2.3
+
+**Figure 2.3** derives from the raw format tibble that synthesises the information contained in **Table A2.5**.
+
+```{r Creating the raw tibble (3)}
+tablea25 <- d_emp |>
+  # Recoding all sex and migrant background categories to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    sexmig = fct_recode(sexmig,
+                        "Non-EU Migrant Women" = "NonEUMigWo",
+                        "EU Migrant Women" = "EUMigWo",
+                        "Native Women" = "NatWo",
+                        "Non-EU Migrant Men" = "NonEUMigMe",
+                        "EU Migrant Men" = "EUMigMe",
+                        "Native Men" = "NatMe")) |>
+  # Applying design weights with the as_survey() function from the `srvyr` package.
+  as_survey(weights = RB050) |>
+  # Grouping by year, sex and migrant background, and temporary or permanent employment categories.
+  group_by(year, sexmig, temp) |> 
+  # Counting the weighted number of respondents within each group.
+  summarise(weighted_n = survey_total()) |>
+  # Transforming the weighted counts into percentages and rounding at two decimal places.
+  mutate(perc = round(weighted_n / sum(weighted_n) * 100, 2)) |>
+  # Resetting the grouping.
+  ungroup() |>
+  # Removing the weighted counts and their associated standard errors.
+  select(-weighted_n, -weighted_n_se)
+```
+
+**Table A2.5** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.5}
+# Table A2.5. Yearly Trends in Rates of Temporary and Permanent Employment, by Sex and Migrant Background.
+
+tablea25_gt <- tablea25 |>
+  # Recoding all percentages and years as strings in a mutate() call, so that `gt` does not mess with their visualisation.
+  mutate(perc = sprintf("%.2f%%", perc),
+         year = as.character(year)) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Building the `gt` table, setting row names as temporary or permanent employment categories, and grouping rows by sex and migrant background.
+  gt(rowname_col = "temp", groupname_col = "sexmig") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.5. Yearly Trends in Rates of Temporary and Permanent Employment**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Setting column labels as strings, so that `gt` does not mess with their visualisation.
+  cols_label(
+    `2007` = "2007", `2008` = "2008", `2009` = "2009",
+    `2010` = "2010", `2011` = "2011", `2012` = "2012",
+    `2015` = "2015", `2018` = "2018", `2019` = "2019",
+    `2020` = "2020", `2021` = "2021", `2022` = "2022"
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different year.
+  tab_stubhead(label = "Year") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+      color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18),
+    column_labels.hidden = FALSE
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Only employed respondents.\nSource: Own calculations, EU-SILC 2007-22 (N = 1.296.594); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea25_gt, "Visuals/Tables/TableA25.png")
+```
+
+```{r Printing Table A2.5, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA25.png")
+```
+
+**Figure 2.3** is appropriately styled and saved as a `.svg` file using the `ggplot2` package.
+
+```{r Generating Figure 2.3}
+# Figure 2.3. Yearly Trends in Temporary Employment Rates by Sex and Migrant Background.
+
+figure23 <- tablea25 |>
+  # Recoding all years as numeric in a mutate() call, so that `ggplot2` can generate a line plot.
+  mutate(year = as.numeric(year),
+         # Recoding all sex and migrant background categories to enhance their readability.
+         sexmig = factor(sexmig, levels = c(
+        "Non-EU Migrant Women", "EU Migrant Women", "Native Women",
+        "Non-EU Migrant Men", "EU Migrant Men", "Native Men"))) |>
+  # Keeping only respondents in temporary employment using the filter() `tidyverse` function.
+  filter(temp %in% c("Temporary job")) |>
+  # Generating a lineplot of temporary employment rates by year, sex, and migrant background.
+  ggplot(aes(x = year, y = perc, linetype = sexmig, color = sexmig)) +
+  # Setting an appropriate line width to facilitate the figure's interpretability.
+  geom_line(linewidth = 0.7) +
+  # Manually annotating rectangles of differing grey shades to highlight the Great Recession and the COVID-19 pandemic.
+  annotate("rect", xmin = 2, xmax = 3, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 3, xmax = 6, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  annotate("rect", xmin = 10, xmax = 11, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 11, xmax = 12, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  # Assigning appropriate labels to all rectangles to highlight the Great Recession and the COVID-19 pandemic.
+  geom_richtext(data = tibble(
+    year = c(2.5, 4.5, 10.5, 11.5),
+    perc = c(41.5, 41.5, 41.5, 41.5),
+    label = c("Great Recession<br>(short-term)", "Great Recession<br>(long-term)",
+              "COVID-19<br>(short-term)", "COVID-19<br>(long-term)")
+    ), 
+    aes(x = year, y = perc, label = label),
+    inherit.aes = FALSE, size = 3.5, color = "black", fontface = "bold") +
+  # Setting a continuous year-by-year scale on the x-axis.
+  scale_x_continuous(breaks = c(1:12),
+                     labels = c("2007", "2008", "2009", "2010", "2011", "2012",
+                                "2015", "2018", "2019", "2020", "2021", "2022")
+                     ) +
+  # Setting a continuous percentage scale on the y-axis.
+  scale_y_continuous(breaks = seq(0, 45, 1)) +
+  # Setting combinations of grey shades and line types to highlight sex and migrant background categories.
+  scale_linetype_manual(values = c("solid", "dotted", "twodash",
+                                   "solid", "dotted", "twodash")) +
+  scale_color_manual(values = c("#000000", "#000000", "#000000",
+                                "#999999", "#999999", "#999999")) +
+  # Styling axes and legends to make the figure look prettier.
+  guides(color = guide_legend(byrow = TRUE), linetype = guide_legend(byrow = TRUE)) +
+  labs(
+    title = "",
+    subtitle = "",
+    x = "",
+    y = "% of Respondents",
+    color = "",
+    linetype = ""
+  ) +
+  # Styling the overall theme to make the figure look prettier.
+  theme_bw(base_size = 14) +  
+  theme(
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18), 
+    plot.subtitle = element_text(hjust = 0.5, face = "italic", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  )
+
+# Saving the `ggplot2` figure as a `.svg` file.
+ggsave(filename = "Visuals/Figures/Figure23.svg",
+       plot = figure23, width = 12, height = 12, dpi = 600)
+```
+
+```{r}
+#| label: Printing Figure 2.3
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 12
+#| fig-height: 12
+#| fig-pos: "H"
+#| fig-cap: "**Figure 2.3.** *Yearly Trends in Temporary Employment Rates by Sex and Migrant Background.*"
+
+# Including the now saved `ggplot2` figure as a graphic in the rendered `.pdf` report.
+figure23
+```
+
+```{r Cleaning up (3), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(tablea25_gt, figure23)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+### 3.4 ✧ Table A2.3
+
+**Table A2.3** derives from the raw format tibbles that synthesise the information contained in **Tables A2.4** and **A2.5**.
+
+**Table A2.3** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.3}
+# Table A2.3. Changes in Weekly Working Hours and Rates of Temporary Employment, by Sex and Migrant Background.
+
+tablea23_gt <- tablea24 |>
+  # Isolating all years delimiting the Great Recession and the COVID-19 pandemic, using the filter() `tidyverse` function.
+  filter(year %in% c("2007", "2009", "2012", "2019", "2020", "2022")) |>
+  # Pivoting the table to a wider format, assigning a separate column of average weekly working hours to each year.
+  pivot_wider(names_from = year, values_from = PL060) |>
+  # Calculating all the short-term and long-term percentage changes.
+  mutate(
+    change_07_09 = (`2009` - `2007`), # Great Recession (short-term).
+    change_07_12 = (`2012` - `2007`), # Great Recession (long-term).
+    change_19_20 = (`2020` - `2019`), # COVID-19 pandemic (short-term).
+    change_19_22 = (`2022` - `2019`) # COVID-19 pandemic (long-term).
+  ) |>
+  # Pivoting the table to a wider format, assigning a single column to all percentage changes.
+  pivot_longer(cols = c(change_07_09, change_07_12,
+                        change_19_20, change_19_22), 
+               names_to = "period", 
+               values_to = "change") |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(sexmig, period, change) |>
+  # Recoding all variable labels to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    period = fct_recode(as.factor(period), 
+                        "Great Recession\n(2007-09, short-term)" =
+                          "change_07_09",
+                        "Great Recession\n(2007-12, long-term)" =
+                          "change_07_12",
+                        "COVID-19\n(2019-20, short-term)" =
+                          "change_19_20",
+                        "COVID-19\n(2019-22, long-term)" =
+                          "change_19_22")) |>
+  # Recoding all percentage changes as strings, so that `gt` does not mess with their visualisation.
+  mutate(change = if_else(change > 0, 
+                          sprintf("+%.2fh", change),
+                          sprintf("%.2fh", change))) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentage changes to each time period category.
+  pivot_wider(names_from = period, values_from = change) |>
+  # Assigning a parameter identifier to distinguish average weekly working hours from rates of temporary employment.
+  mutate(parameter = "Weekly Working Hours") |>
+  # Binding the raw tibble for changes in average weekly working hours with the raw tibble for changes in rates of temporary employment.
+  rbind(tablea25 |>
+          # Isolating all years delimiting the Great Recession and the COVID-19 pandemic, using the filter() `tidyverse` function.
+          filter(year %in% c("2007", "2009", "2012", "2019", "2020", "2022")) |>
+          # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+          pivot_wider(names_from = year, values_from = perc) |>
+          # Calculating all the short-term and long-term percentage changes.
+          mutate(
+            change_07_09 = (`2009` - `2007`), # Great Recession (short-term).
+            change_07_12 = (`2012` - `2007`), # Great Recession (long-term).
+            change_19_20 = (`2020` - `2019`), # COVID-19 pandemic (short-term).
+            change_19_22 = (`2022` - `2019`) # COVID-19 pandemic (long-term).
+            ) |>
+          # Pivoting the table to a wider format, assigning a single column to all percentage changes.
+          pivot_longer(cols = c(change_07_09, change_07_12,
+                                change_19_20, change_19_22),
+                       names_to = "period", 
+                       values_to = "change") |>
+          # Dropping all superfluous variables, using the select() `tidyverse` function.
+          select(sexmig, temp, period, change) |>
+          # Recoding all variable labels to enhance their readability, using fct_recode() in a mutate() call.
+          mutate(period = fct_recode(as.factor(period), 
+                       "Great Recession\n(2007-09, short-term)" =
+                          "change_07_09",
+                        "Great Recession\n(2007-12, long-term)" =
+                          "change_07_12",
+                        "COVID-19\n(2019-20, short-term)" =
+                          "change_19_20",
+                        "COVID-19\n(2019-22, long-term)" =
+                          "change_19_22")) |>
+          # Recoding all percentage changes as strings, so that `gt` does not mess with their visualisation.
+          mutate(change = if_else(change > 0, 
+                                  sprintf("+%.2f%%", change), 
+                                  sprintf("%.2f%%", change))) |>
+          # Keeping only changes in temporary employment, using the filter() `tidyverse` function.
+          filter(temp %in% "Temporary job") |> 
+          # Dropping the now superfluous temporary employment identifier, using the select() `tidyverse` function.
+          select(-temp) |>
+          # Pivoting the table to a wider format, assigning a separate column of percentage changes to each time period category.
+          pivot_wider(names_from = period, values_from = change) |>
+          # Assigning a parameter identifier to distinguish average weekly working hours from rates of temporary employment.
+          mutate(parameter = "Temporary Employment Rates")) |>
+  # Building the `gt` table, setting row names as sex and migrant background categories, and grouping rows by parameter.
+  gt(rowname_col = "sexmig", groupname_col = "parameter") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.3. Changes in Weekly Working Hours and Temporary Employment Rates**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different time period
+  tab_stubhead(label = "Time Period") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18)
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Only employed respondents.\nChanges are calculated by subtracting the % in 2009/12/20/22 from the % in 2007/19.\nSource: Own calculations, EU-SILC 2007-22 (N = 1.296.594); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea23_gt, "Visuals/Tables/TableA23.png")
+```
+
+```{r Printing Table A2.3, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA23.png")
+```
+
+```{r Cleaning up (2+3), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(tablea23_gt, tablea24, tablea25)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+### 3.5 ✧ Table A2.6
+
+Since the pipeline needed to generate the **Mutual Information Index of Occupational Segregation** (**M**) is computationally intensive, I exploit *parallel processing* to speed up the calculations, using the `future` package.
+
+```{r Creating the raw tibble (4)}
+# Opening the parallel processing session, utilising all the 14 cores available on my machine.
+plan(multisession, workers = 14)
+
+# Binding the raw tibble containing ISCO-88 codes (2007-10) with the raw tibble including ISCO-08 codes (2011-2022).
+tablea26 <- bind_rows(
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  d |> select(year, sexmig, PL050_fct, RB050) |>
+    # Keeping ISCO-88 codes only (2007-10), using the filter() `tidyverse` function.
+    filter(year %in% c("2007", "2008", "2009", "2010")) |>
+    # Splitting sex and migrant background categories in a mutate() call, to compute their separate as well as joint contribution to M.
+    mutate(sex = fct_collapse(sexmig,
+                              "Female" = c("NonEUMigWo", "EUMigWo", "NatWo"),
+                              "Male"   = c("NonEUMigMe", "EUMigMe", "NatMe")),
+           mig = fct_collapse(sexmig,
+                              "Non-EU Migrant" = c("NonEUMigWo", "NonEUMigMe"),
+                              "EU Migrant" = c("EUMigWo", "EUMigMe"),
+                              "Native" = c("NatWo", "NatMe"))) |>
+    # Dropping the superfluous joint sex and migrant background variable, using the select() `tidyverse` function.
+    select(-sexmig) |>
+    # Applying design weights with the as_survey() function from the `srvyr` package.
+    as_survey(weights = RB050) |>
+    # Grouping by year, sex, migrant background, and ISCO-88 codes.
+    group_by(year, sex, mig, PL050_fct) |>
+    # Counting the weighted number of respondents within each group.
+    survey_count(name = "weighted_n") |>
+    # Resetting the grouping.
+    ungroup() |>
+    # Removing the standard errors associated to the weighted counts.
+    select(-weighted_n_se) |>
+    # Transforming the tibble in the `data.table` format, using the prepare_data() `mutualinf` function.
+    prepare_data(vars = "all_vars", fw = "weighted_n") |>
+    # Computing M, using the mutual() `mutualinf` function.
+    mutual(
+      group = c("sex", "mig"),
+      unit = c("PL050_fct"),
+      by = "year",
+      contribution.from = "group_vars"
+      ),
+  
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  d |> select(year, sexmig, PL051_fct, RB050) |>
+    # Keeping ISCO-08 codes only (2011-22), using the filter() `tidyverse` function.
+    filter(!(year %in% c("2007", "2008", "2009", "2010"))) |>
+    # Splitting sex and migrant background categories in a mutate() call, to compute their separate as well as joint contribution to M.
+    mutate(sex = fct_collapse(sexmig,
+                              "Female" = c("NonEUMigWo", "EUMigWo", "NatWo"),
+                              "Male"   = c("NonEUMigMe", "EUMigMe", "NatMe")),
+           mig = fct_collapse(sexmig,
+                              "Non-EU Migrant" = c("NonEUMigWo", "NonEUMigMe"),
+                              "EU Migrant" = c("EUMigWo", "EUMigMe"),
+                              "Native" = c("NatWo", "NatMe"))) |>
+    # Dropping the superfluous joint sex and migrant background variable, using the select() `tidyverse` function.
+    select(-sexmig) |>
+    # Applying design weights with the as_survey() function from the `srvyr` package.
+    as_survey(weights = RB050) |>
+    # Grouping by year, sex, migrant background, and ISCO-08 codes.
+    group_by(year, sex, mig, PL051_fct) |>
+    # Counting the weighted number of respondents within each group.
+    survey_count(name = "weighted_n") |>
+    # Resetting the grouping.
+    ungroup() |>
+    # Removing the standard errors associated to the weighted counts.
+    select(-weighted_n_se) |>
+    # Transforming the tibble in the `data.table` format, using the prepare_data() `mutualinf` function.
+    prepare_data(vars = "all_vars", fw = "weighted_n") |>
+    # Computing M, using the mutual() `mutualinf` function.
+    mutual(
+      group = c("sex", "mig"),
+      unit = c("PL051_fct"),
+      by = "year",
+      contribution.from = "group_vars"
+      ))
+
+# Closing the parallel processing session.
+plan(sequential)
+```
+
+**Table A2.6** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.6}
+# Table A2.6. Yearly Trends in Mutual Information Index of Occupational Segregation, by Sex and Migrant Background.
+
+tablea26_gt <- tablea26 |>
+  # Recoding all figures and years as strings in a mutate() call, so that `gt` does not mess with their visualisation.
+  mutate(M = sprintf("%.5f", M),
+         C_sex = sprintf("%.5f", C_sex),
+         C_mig = sprintf("%.5f", C_mig),
+         interaction = sprintf("%.5f", interaction),
+         year = as.character(year)) |>
+  # Building the `gt` table, setting row names as years,
+  gt(rowname_col = "year") |> 
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.6. Yearly Trends in Mutual Information Index of Occupational Segregation**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Renaming column labels to foster their readability.
+  cols_label(
+    `M` = "Mutual Information Index\nof Occupational Segregation",
+    `C_sex` = "Contribution\nfrom Sex",
+    `C_mig` = "Contribution from\nMigrant Background",
+    `interaction` = "Contribution\nfrom Interaction"
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different year.
+  tab_stubhead(label = "Year") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      
+      cell_fill(
+      color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18),
+    column_labels.hidden = FALSE
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Occupations are classified using 2-digit ISCO-88 (2007-10) or ISCO-08 (2011-22).\nSource: Own calculations, EU-SILC 2007-22 (N = 1.838.684); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea26_gt, "Visuals/Tables/TableA26.png")
+```
+
+```{r Printing Table A2.6, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA26.png")
+```
+
+```{r Cleaning up (4), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(tablea26, tablea26_gt)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+### 3.6 ✧ Table A2.7a / Table A2.7b
+
+**Tables A2.7a** and **A2.7b** derive from a raw format tibble that synthesises information on occupational concentration among both men and women.
+
+```{r Creating the raw tibble (5)}
+tablea27 <- d |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(year, sexmig, isco, RB050) |>
+  # Applying design weights with the as_survey() function from the `srvyr` package.
+  as_survey(weights = RB050) |>
+  # Grouping by year, sex and migrant background, and occupational code.
+  group_by(year, sexmig, isco) |> 
+  # Counting the weighted number of respondents within each group.
+  summarise(weighted_n = survey_total()) |>
+  # Computing occupational concentration percentages, rounded to two decimal places.
+  mutate(perc = round(weighted_n / sum(weighted_n) * 100, 2)) |>
+  # Resetting the grouping.
+  ungroup() |> 
+  # Removing the weighted counts and their associated standard errors.
+  select(-weighted_n, -weighted_n_se) |>
+  # Recoding all sex and migrant background categories to enhance their readability, using fct_collapse() and fct_recode() in a mutate() call.
+  mutate(
+    sex = fct_collapse(sexmig,
+                            "Women" = c("NonEUMigWo", "EUMigWo", "NatWo"),
+                            "Men"   = c("NonEUMigMe", "EUMigMe", "NatMe")),
+    
+    mig = fct_collapse(sexmig,
+                            "Non-EU Migrant" = c("NonEUMigWo", "NonEUMigMe"),
+                            "EU Migrant" = c("EUMigWo", "EUMigMe"),
+                            "Native" = c("NatWo", "NatMe")),
+    
+    sexmig = fct_recode(sexmig,
+                        "Non-EU Migrant Women" = "NonEUMigWo",
+                        "EU Migrant Women" = "EUMigWo",
+                        "Native Women" = "NatWo",
+                        "Non-EU Migrant Men" = "NonEUMigMe",
+                        "EU Migrant Men" = "EUMigMe",
+                        "Native Men" = "NatMe"))
+```
+
+**Table A2.7a** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.7a}
+# Table A2.7a. Yearly Trends in Occupational Concentration (1-digit ISCO) among Women, by Migrant Background.
+
+tablea27a_gt <- tablea27 |>
+  # Recoding all percentages, years, and occupational categories as strings in a mutate() call, so that `gt` does not mess with their visualisation.
+  mutate(perc = sprintf("%.2f%%", perc),
+         year = as.character(year),
+         isco = factor(isco,
+                       levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9"),
+                       labels = c("Managers", "Professionals", "Technicians",
+                                  "Clerical workers", "Service workers",
+                                  "Skilled workers",
+                                  "Craft and related trades workers",
+                                  "Operators", "Elementary workers"))) |>
+  # Keeping women only, using the filter() `tidyverse` function.
+  filter(sex == "Women") |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(-sexmig, -sex) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Building the `gt` table, setting row names as occupational categories, and grouping rows by migrant background.
+  gt(rowname_col = "isco", groupname_col = "mig") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.7a. Yearly Trends in Occupational Concentration (1-digit ISCO)**"),
+    subtitle = md("*among Women, by Migrant Background*")
+  ) |>
+  # Setting column labels as strings, so that `gt` does not mess with their visualisation.
+  cols_label(
+    `2007` = "2007", `2008` = "2008", `2009` = "2009",
+    `2010` = "2010", `2011` = "2011", `2012` = "2012",
+    `2015` = "2015", `2018` = "2018", `2019` = "2019",
+    `2020` = "2020", `2021` = "2021", `2022` = "2022"
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different year.
+  tab_stubhead(label = "Year") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+      color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18),
+    column_labels.hidden = FALSE
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Women only. Occupations are classified using 2-digit ISCO-88 (2007-10) or ISCO-08 (2011-22).\nSource: Own calculations, EU-SILC 2007-22 (N = 1.838.684); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea27a_gt, "Visuals/Tables/TableA27a.png")
+```
+
+```{r Printing Table A2.7a, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA27a.png")
+```
+
+**Table A2.7b** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.7b}
+# Table A2.7b. Yearly Trends in Occupational Concentration (1-digit ISCO) among Men, by Migrant Background.
+
+tablea27b_gt <- tablea27 |>
+  # Recoding all percentages, years, and occupational categories as strings in a mutate() call, so that `gt` does not mess with their visualisation.
+  mutate(perc = sprintf("%.2f%%", perc),
+         year = as.character(year),
+         isco = factor(isco,
+                       levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9"),
+                       labels = c("Managers", "Professionals", "Technicians",
+                                  "Clerical workers", "Service workers",
+                                  "Skilled workers",
+                                  "Craft and related trades workers",
+                                  "Operators", "Elementary workers"))) |>
+  # Keeping women only, using the filter() `tidyverse` function.
+  filter(sex == "Men") |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(-sexmig, -sex) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Building the `gt` table, setting row names as occupational categories, and grouping rows by migrant background.
+  gt(rowname_col = "isco", groupname_col = "mig") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.7b. Yearly Trends in Occupational Concentration (1-digit ISCO)**"),
+    subtitle = md("*among Men, by Migrant Background*")
+  ) |>
+  # Setting column labels as strings, so that `gt` does not mess with their visualisation.
+  cols_label(
+    `2007` = "2007", `2008` = "2008", `2009` = "2009",
+    `2010` = "2010", `2011` = "2011", `2012` = "2012",
+    `2015` = "2015", `2018` = "2018", `2019` = "2019",
+    `2020` = "2020", `2021` = "2021", `2022` = "2022"
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different year.
+  tab_stubhead(label = "Year") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+      color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18),
+    column_labels.hidden = FALSE
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Men only. Occupations are classified using 2-digit ISCO-88 (2007-10) or ISCO-08 (2011-22).\nSource: Own calculations, EU-SILC 2007-22 (N = 1.838.684); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea27b_gt, "Visuals/Tables/TableA27b.png")
+```
+
+```{r Printing Table A2.7b, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA27b.png")
+```
+
+```{r Cleaning up (5), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(tablea27a_gt, tablea27b_gt)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+### 3.7 ✧ Table 2.1 / Table 2.2
+
+**Tables 2.1** and **2.2** derive from the raw format tibble that synthesises the information contained in **Table A2.7**.
+
+```{r Creating the raw tibble (6)}
+table21 <- tablea27 |>
+  # Isolating all years delimiting the Great Recession and the COVID-19 pandemic, using the filter() `tidyverse` function.
+  filter(year %in% c("2007", "2009", "2012", "2019", "2020", "2022")) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Calculating all the short-term and long-term percentage changes.
+  mutate(
+    change_07_09 = (`2009` - `2007`), # Great Recession (short-term).
+    change_07_12 = (`2012` - `2007`), # Great Recession (long-term).
+    change_19_20 = (`2020` - `2019`), # COVID-19 pandemic (short-term).
+    change_19_22 = (`2022` - `2019`) # COVID-19 pandemic (long-term).
+  ) |>
+  # Pivoting the table to a wider format, assigning a single column to all percentage changes.
+  pivot_longer(cols = c(change_07_09, change_07_12,
+                        change_19_20, change_19_22), 
+               names_to = "period", 
+               values_to = "change") |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(sexmig, sex, mig, isco, period, change) |>
+  # Recoding all variable labels to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    period = fct_recode(as.factor(period), 
+                        "Great Recession (2007-09, short-term)" =
+                          "change_07_09",
+                        "Great Recession (2007-12, long-term)" =
+                          "change_07_12",
+                        "COVID-19 (2019-20, short-term)" =
+                          "change_19_20",
+                        "COVID-19 (2019-22, long-term)" =
+                          "change_19_22"),
+    
+    isco = factor(isco, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9"),
+                  labels = c("Managers", "Professionals", "Technicians",
+                             "Clerical workers", "Service workers",
+                             "Skilled workers",
+                             "Craft and related trades workers",
+                             "Operators", "Elementary workers")))
+```
+
+**Table 2.1** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table 2.1}
+# Table 2.1. Changes in Occupational Concentration (1-digit ISCO) during the Great Recession, by Sex and Migrant Background.
+
+table21_gt <- table21 |> 
+  # Keeping Great Recession time periods only, using the filter() `tidyverse` function.
+  filter(period %in% c("Great Recession (2007-09, short-term)",
+                       "Great Recession (2007-12, long-term)")) |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(-sex, -mig) |>
+  # Recoding all percentage changes as strings, so that `gt` does not mess with their visualisation.
+  mutate(change = if_else(change > 0, 
+                            sprintf("+%.2f%%", change), 
+                            sprintf("%.2f%%", change))) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentage changes to each sex and migrant background category.
+  pivot_wider(names_from = sexmig, values_from = change) |>
+  # Building the `gt` table, setting row names as occupational categories, and grouping rows by time period.
+  gt(rowname_col = "isco", groupname_col = "period") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table 2.1. Changes in Occupational Concentration (1-digit ISCO)**"),
+    subtitle = md("*by Sex and Migrant Background, during the Great Recession*")
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each row represents a different occupational category.
+  tab_stubhead(label = "Occupation\n(1-digit ISCO)") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18)
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Occupations are classified using 2-digit ISCO-88 (2007-10) or ISCO-08 (2011-22).\nSource: Own calculations, EU-SILC 2007-22 (N = 1.838.684); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(table21_gt, "Visuals/Tables/Table21.png", vwidth = 2200)
+```
+
+```{r Printing Table 2.1, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/Table21.png")
+```
+
+**Table 2.2** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table 2.2}
+# Table 2.2. Changes in Occupational Concentration (1-digit ISCO) during the COVID-19 Pandemic, by Sex and Migrant Background.
+
+table22_gt <- table21 |>
+  # Keeping COVID-19 time periods only, using the filter() `tidyverse` function.
+  filter(period %in% c("COVID-19 (2019-20, short-term)", "COVID-19 (2019-22, long-term)")) |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(-sex, -mig) |>
+  # Recoding all percentage changes as strings, so that `gt` does not mess with their visualisation.
+  mutate(change = if_else(change > 0,
+                          sprintf("+%.2f%%", change), 
+                          sprintf("%.2f%%", change))) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentage changes to each sex and migrant background category.
+  pivot_wider(names_from = sexmig, values_from = change) |>
+  # Building the `gt` table, setting row names as occupational categories, and grouping rows by time period.
+  gt(rowname_col = "isco", groupname_col = "period") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table 2.2. Changes in Occupational Concentration (1-digit ISCO)**"),
+    subtitle = md("*by Sex and Migrant Background, during the COVID-19 pandemic*")
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each row represents a different occupational category.
+  tab_stubhead(label = "Occupation\n(1-digit ISCO)") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18)
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Occupations are classified using 2-digit ISCO-88 (2007-10) or ISCO-08 (2011-22).\nSource: Own calculations, EU-SILC 2007-22 (N = 1.838.684); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(table22_gt, "Visuals/Tables/Table22.png", vwidth = 2200)
+```
+
+```{r Printing Table 2.2, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/Table22.png")
+```
+
+```{r Cleaning up (6), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(table21, table21_gt, table22_gt, tablea27)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+### 3.8 ✧ Table A2.8 / Table A2.9 / Figure 2.4
+
+**Table A2.9** and **Figure 2.4** derive from the raw format tibble that synthesises the information contained in **Table A2.8**.
+
+```{r Creating the raw tibble (7)}
+tablea28 <- d_emp |>
+  # Isolating all years delimiting the COVID-19 pandemic, using the filter() `tidyverse` function.
+  filter(year %in% c("2018", "2019", "2020", "2021", "2022")) |>
+  # Recoding all variable labels to enhance their readability, using fct_recode() in a mutate() call.
+  select(year, sexmig, occrit, RB050) |>
+  # Recoding all sex and migrant background categories to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    sexmig = fct_recode(sexmig,
+                        "Non-EU Migrant Women" = "NonEUMigWo",
+                        "EU Migrant Women" = "EUMigWo",
+                        "Native Women" = "NatWo",
+                        "Non-EU Migrant Men" = "NonEUMigMe",
+                        "EU Migrant Men" = "EUMigMe",
+                        "Native Men" = "NatMe"
+    )) |>
+  # Applying design weights with the as_survey() function from the `srvyr` package.
+  as_survey(weights = RB050) |>
+  # Grouping by year, sex and migrant background, and employment in an essential occupation.
+  group_by(year, sexmig, occrit) |> 
+  # Counting the weighted number of respondents within each group.
+  summarise(weighted_n = survey_total()) |>
+  # Computing percentages, rounded to two decimal places.
+  mutate(perc = round(weighted_n / sum(weighted_n) * 100, 2)) |>
+  # Resetting the grouping.
+  ungroup() |>
+  # Removing the weighted counts and their associated standard errors.
+  select(-weighted_n, -weighted_n_se)
+```
+
+**Table A2.8** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.8}
+# Table A2.8. Yearly Trends in Rates of Employment in Essential Occupations, by Sex and Migrant Background.
+
+tablea28_gt <- tablea28 |>
+  # Recoding all percentages and years as strings in a mutate() call, so that `gt` does not mess with their visualisation.
+  mutate(perc = sprintf("%.2f%%", perc),
+         year = as.character(year)) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Building the `gt` table, setting row names as essential or non-essential job categories, and grouping rows by sex and migrant background.
+  gt(rowname_col = "occrit", groupname_col = "sexmig") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.8. Yearly Trends in Rates of Employment in Essential Occupations**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Setting column labels as strings, so that `gt` does not mess with their visualisation.
+  cols_label(
+    `2018` = "2018", `2019` = "2019",
+    `2020` = "2020", `2021` = "2021", `2022` = "2022"
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different year.
+  tab_stubhead(label = "Year") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+      color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  # Styling the row grouping cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18),
+    column_labels.hidden = FALSE
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Only employed respondents.\nSource: Own calculations, EU-SILC 2007-22 (N = 1.296.594); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea28_gt, "Visuals/Tables/TableA28.png")
+```
+
+```{r Printing Table A2.8, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA28.png")
+```
+
+**Table A2.9** is appropriately styled and saved as a `.png` file using the `gt` package.
+
+```{r Generating Table A2.9}
+# Table A2.9. Changes in Rates of Employment in Essential Occupations, by Sex and Migrant Background.
+
+tablea29_gt <- tablea28 |>
+  # Isolating all years delimiting the COVID-19 pandemic, using the filter() `tidyverse` function.
+  filter(year %in% c("2019", "2020", "2022")) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentages to each year.
+  pivot_wider(names_from = year, values_from = perc) |>
+  # Calculating all the short-term and long-term percentage changes.
+  mutate(
+    change_19_20 = (`2020` - `2019`), # COVID-19 pandemic (short-term).
+    change_19_22 = (`2022` - `2019`) # COVID-19 pandemic (long-term).
+  ) |>
+  # Pivoting the table to a wider format, assigning a single column to all percentage changes.
+  pivot_longer(cols = c(change_19_20, change_19_22), 
+               names_to = "period", 
+               values_to = "change") |>
+  # Dropping all superfluous variables, using the select() `tidyverse` function.
+  select(sexmig, occrit, period, change) |>
+  # Recoding all variable labels to enhance their readability, using fct_recode() in a mutate() call.
+  mutate(
+    period = fct_recode(as.factor(period),
+                        "COVID-19\n(2019-20, short-term)" =
+                          "change_19_20",
+                        "COVID-19\n(2019-22, long-term)" =
+                          "change_19_22")) |>
+  # Recoding all percentage changes as strings, so that `gt` does not mess with their visualisation.
+  mutate(change = if_else(change > 0, 
+                          sprintf("+%.2f%%", change), 
+                          sprintf("%.2f%%", change))) |>
+  # Keeping only respondents in essential occupations using the filter() `tidyverse` function.
+  filter(occrit %in% "Essential occupation") |>
+  # Dropping the now superfluous essential occupation identifier, using the select() `tidyverse` function.
+  select(-occrit) |>
+  # Pivoting the table to a wider format, assigning a separate column of percentage changes to each time period category.
+  pivot_wider(names_from = period, values_from = change) |>
+  # Building the `gt` table, setting row names as sex and migrant background category.
+  gt(rowname_col = "sexmig") |>
+  # Assigning an appropriate title and subtitle to the `gt` table.
+  tab_header(
+    title = md("**Table A2.9. Changes in Rates of Employment in Essential Occupations**"),
+    subtitle = md("*by Sex and Migrant Background*")
+  ) |>
+  # Imposing the FiveThirtyEight (538) theme on the `gt` table.
+  gt_theme_538() |>
+  # Fixing the stubhead label to make it clear that each column represents a different time period.
+  tab_stubhead(label = "Time Period") |>
+  # Styling the stubhead cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_stubhead()
+    ) |>
+  # Styling the title cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_title()
+  ) |>
+  # Styling the column labels cells to make them prettier.
+  tab_style(
+    style = list(
+      cell_text(
+        weight = "bold",
+        style = "italic",
+        align = "center",
+        v_align = "middle",
+        whitespace = "pre-wrap",
+        transform = "capitalize"
+      ),
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_column_labels()
+  ) |>
+  tab_style(
+    # Styling the row grouping cells to make them prettier.
+    style = list(
+      cell_text(
+        style = "italic",
+        align = "center"
+      ),
+      
+      cell_fill(
+        color = "#D6D6D6"
+      )
+    ),
+    locations = cells_row_groups()
+  ) |>
+  # Styling the body cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) |>
+  # Setting other general table options for prettier visualisation.
+  tab_options(
+    table.font.size = px(14),
+    heading.align = "center",
+    row_group.font.weight = "bold",
+    heading.subtitle.font.size = px(16),
+    heading.title.font.size = px(18)
+  ) |>
+  # Setting the source note to comply with editorial requirements.
+  tab_source_note(
+    source_note = "Note: Only employed respondents.\nSource: Own calculations, EU-SILC 2007-22 (N = 1.296.594); weighted sample."
+  ) |>
+  # Styling the source notes cells to make them prettier.
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_source_notes()
+  )
+
+# Saving the `gt` table as a `.png` file.
+gtsave(tablea29_gt, "Visuals/Tables/TableA29.png")
+```
+
+```{r Printing Table A2.9, echo = FALSE, fig.align = "center", fig.pos = "H"}
+# Including the now saved `gt` table as a graphic in the rendered `.pdf` report.
+knitr::include_graphics("Visuals/Tables/TableA29.png")
+```
+
+**Figure 2.4** is appropriately styled and saved as a `.svg` file using the `ggplot2` package.
+
+```{r Generating Figure 2.4}
+# Figure 2.4. Yearly Trends in Employment in Essential Occupations by Sex and Migrant Background.
+
+figure24 <- tablea28 |>
+  # Recoding all years as numeric in a mutate() call, so that `ggplot2` can generate a line plot.
+  mutate(year = as.numeric(year)) |>
+  # Keeping only respondents in essential occupations using the filter() `tidyverse` function.
+  filter(occrit %in% c("Essential occupation")) |>
+  # Generating a lineplot of essential employment rates by year, sex, and migrant background.
+  ggplot(aes(x = year, y = perc, linetype = sexmig, color = sexmig)) +
+  # Setting an appropriate line width to facilitate the figure's interpretability.
+  geom_line(linewidth = 0.7) +
+  # Manually annotating rectangles of differing grey shades to highlight the COVID-19 pandemic.
+  annotate("rect", xmin = 10, xmax = 11, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#A3A3A3") +
+  annotate("rect", xmin = 11, xmax = 12, ymin = -Inf, ymax = Inf,
+           alpha = 0.3, fill = "#C2C2C2") +
+  # Assigning appropriate labels to all rectangles to highlight the COVID-19 pandemic.
+  geom_richtext(data = tibble(
+    year = c(10.5, 11.5),
+    perc = c(58.5, 58.5),
+    label = c("COVID-19<br>(short–term)", "COVID-19<br>(long–term)")
+    ), 
+    aes(x = year, y = perc, label = label),
+    inherit.aes = FALSE, size = 3.5, color = "black", fontface = "bold") +
+  # Setting a continuous year-by-year scale on the x-axis.
+  scale_x_continuous(breaks = c(8, 9, 10, 11, 12),
+                     labels = c("2018", "2019", "2020", "2021", "2022")) +
+  # Setting a continuous percentage scale on the y-axis.
+  scale_y_continuous(breaks = seq(30, 60, 1), limits = c(33, 59)) +
+  # Setting combinations of grey shades and line types to highlight sex and migrant background categories.
+  scale_linetype_manual(values = c("solid", "dotted", "twodash",
+                                   "solid", "dotted", "twodash")) +
+  scale_color_manual(values = c("#000000", "#000000", "#000000",
+                                "#999999", "#999999", "#999999")) +
+  # Styling axes and legends to make the figure look prettier.
+  guides(color = guide_legend(byrow = TRUE), linetype = guide_legend(byrow = TRUE)) +
+  labs(
+    title = "",
+    subtitle = "",
+    x = "",
+    y = "% of Respondents",
+    color = "",
+    linetype = ""
+  ) +
+  # Styling the overall theme to make the figure look prettier.
+  theme_bw(base_size = 14) +  
+  theme(
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18), 
+    plot.subtitle = element_text(hjust = 0.5, face = "italic", size = 14),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  )
+
+# Saving the `ggplot2` figure as a `.svg` file.
+ggsave(filename = "Visuals/Figures/Figure24.svg",
+       plot = figure24, width = 10, height = 8, dpi = 600)
+```
+
+```{r}
+#| label: Printing Figure 2.4
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 10
+#| fig-height: 8
+#| fig-pos: "H"
+#| fig-cap: "**Figure 2.4.** *Yearly Trends in Temporary Employment Rates by Sex and Migrant Background.*"
+
+# Including the now saved `ggplot2` figure as a graphic in the rendered `.pdf` report.
+figure24
+```
+
+```{r Cleaning up (7), include = FALSE}
+# Removing all unused objects to keep the environment clean.
+rm(tablea28, tablea28_gt, tablea29_gt, figure24)
+
+# Removing all datasets to keep the environment clean.
+rm(d, d_emp)
+
+# Releasing the unused memory to keep the environment clean.
+gc()
+```
+
+\clearpage
+## 4. References
+
+::: {#refs}
+:::
