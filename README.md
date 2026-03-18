@@ -10,7 +10,7 @@ These materials are intended to support transparency, reproducibility, and open 
 
 **License and Citation:** This repository is licensed under a Creative Commons Attribution 4.0 International License (CC BY 4.0). You are free to share and adapt the materials, including for commercial use, provided appropriate credit is given.
 
-**To cite this repository:** Guarnerio, M. (2025). *Intersecting Inequalities – Supplementary Materials* [Source code]. GitHub. https://github.com/MattiaGuarnerio/Intersecting-Inequalities
+**To cite this repository:** Guarnerio, M. (2026). *Intersecting Inequalities – Supplementary Materials* [Source code]. GitHub. https://github.com/MattiaGuarnerio/Intersecting-Inequalities
 
 ---
 
